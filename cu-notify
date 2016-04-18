@@ -1,0 +1,24 @@
+#!/usr/bin/bash
+
+# checkupdates notify
+
+required=(checkupdates notify-send)
+
+for package in ${required[@]} ; do
+    if ! which ${package} &> /dev/null ; then
+        echo "Missing ${package}"
+        exit -1
+    fi
+done
+
+TIME_TO_SLEEP=2h
+
+while true ; do
+    # show the first 3 packages only
+    list=$(checkupdates | head -3)
+    if [ ! -z "${list}" ] ; then
+        notify-send --icon=software-update-available "New updates available" "${list}"
+    fi
+    sleep ${TIME_TO_SLEEP}
+done
+

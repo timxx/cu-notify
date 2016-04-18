@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=cu-notify-autostart
+Comment=Auto check updates and popup notify
+Exec=/usr/bin/cu-notify
+Type=Application
+Icon=system-software-update
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-Phase=Applications
+X-GNOME-AutoRestart=true
+X-GNOME-Autostart-Notify=false
