@@ -1,24 +1,83 @@
-#!/usr/bin/bash
+#!/usr/bin/env python
 
-# checkupdates notify
+from PyQt4.QtCore import *
+from PyQt4.QtGui import *
 
-required=(checkupdates notify-send)
+import sys, signal
+import subprocess
 
-for package in ${required[@]} ; do
-    if ! which ${package} &> /dev/null ; then
-        echo "Missing ${package}"
-        exit -1
-    fi
-done
+class UpdateChecker(QObject):
+    updatesAvailable = pyqtSignal()
+    def __init__(self, parent = None):
+        super(UpdateChecker, self).__init__(parent)
+        self._list = []
 
-TIME_TO_SLEEP=2h
+    def check(self):
+        data = subprocess.check_output(["checkupdates"]).decode("utf-8")
 
-while true ; do
-    # show the first 3 packages only
-    list=$(checkupdates | head -3)
-    if [ ! -z "${list}" ] ; then
-        notify-send --icon=software-update-available "New updates available" "${list}"
-    fi
-    sleep ${TIME_TO_SLEEP}
-done
+        self._list = data.rstrip('\n').split('\n')
+        if self._list:
+            self.updatesAvailable.emit()
 
+    def pendingUpdates(self):
+        return self._list
+
+class Worker(QObject):
+    def __init__(self, parent = None):
+        super(Worker, self).__init__(parent)
+        self._checker = UpdateChecker(self)
+        self._checker.updatesAvailable.connect(self.__onUpdatesAvailable)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._checker.check)
+
+        self._tray = None
+
+    def startChecker(self):
+        if self._tray:
+            self._tray.hide()
+        else:
+            # check the first time before timeout
+            self._checker.check()
+        # 2 hours for now
+        self._timer.start(2 * 60 * 60 * 1000)
+
+    def stopChecker(self):
+        self._timer.stop()
+
+    def __onUpdatesAvailable(self):
+        # no more check until user ack
+        self.stopChecker()
+        self.__ensureTray()
+
+        updates = self._checker.pendingUpdates()
+
+        self._tray.show()
+        self._tray.setToolTip("{0} new updates available!".format(len(updates)))
+        self._tray.showMessage("Updates available", "\n".join(updates))
+
+    def __onTrayActivated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.startChecker()
+
+    def __ensureTray(self):
+        if not self._tray:
+            self._tray = QSystemTrayIcon(self)
+            self._tray.activated.connect(self.__onTrayActivated)
+            self._tray.messageClicked.connect(self.startChecker)
+
+        self._tray.setIcon(QIcon.fromTheme("system-software-update"))
+
+if __name__ == "__main__":
+    # for CTRL + C
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    app = QApplication(sys.argv)
+
+    if not QSystemTrayIcon.isSystemTrayAvailable():
+        print("Warning: System tray is unavailable!")
+
+    worker = Worker()
+    worker.startChecker()
+
+    sys.exit(app.exec())
