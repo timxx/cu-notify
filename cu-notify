@@ -5,6 +5,7 @@ from PyQt4.QtGui import *
 
 import sys, signal
 import subprocess
+import time
 
 class UpdateChecker(QObject):
     updatesAvailable = pyqtSignal()
@@ -14,6 +15,8 @@ class UpdateChecker(QObject):
 
     def check(self):
         data = subprocess.check_output(["checkupdates"]).decode("utf-8")
+        if not data:
+            return
 
         self._list = data.rstrip('\n').split('\n')
         if self._list:
@@ -53,6 +56,8 @@ class Worker(QObject):
         updates = self._checker.pendingUpdates()
 
         self._tray.show()
+        # wait for a while for fixing message pos
+        time.sleep(1)
         self._tray.setToolTip("{0} new updates available!".format(len(updates)))
         self._tray.showMessage("Updates available", "\n".join(updates))
 
