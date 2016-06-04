@@ -25,6 +25,69 @@ class UpdateChecker(QObject):
     def pendingUpdates(self):
         return self._list
 
+class Config(QObject):
+    def __init__(self, parent = None):
+        super(Config, self).__init__(parent)
+        self._sett = QSettings(QSettings.UserScope, "cu-notify", parent=self)
+
+    def isShowTrayAlways(self):
+        value = self._sett.value("showTray", True, type=bool)
+        return value
+
+    def setShowTrayAlways(self, v):
+        self._sett.setValue("showTray", v)
+
+    def updateInterval(self):
+        """in ms"""
+        value = self._sett.value("updateInterval", 2 * 60 * 60 * 1000, type=int)
+        return value
+
+    def setUpdateInterval(self, v):
+        self._sett.setValue("updateInterval", v)
+
+    def sync(self):
+        self._sett.sync()
+
+class Preferences(QDialog):
+    def __init__(self, config, parent = None):
+        super(Preferences, self).__init__(parent)
+        self._cfg = config
+
+        self._cbShowTray = QCheckBox(self.tr("Show tray always"), self)
+        self._sbInterval = QSpinBox(self)
+        self._buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel);
+
+        hlayout = QHBoxLayout()
+        hlayout.addWidget(QLabel(self.tr("Check interval:"), self))
+        hlayout.addWidget(self._sbInterval)
+        hlayout.addWidget(QLabel(self.tr("minutes")))
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._cbShowTray)
+        layout.addLayout(hlayout)
+        layout.addWidget(self._buttonBox)
+
+        self._buttonBox.accepted.connect(self.__onAccept)
+        self._buttonBox.rejected.connect(self.reject)
+
+        self.__initValue()
+
+    def __onAccept(self):
+        interval = self._sbInterval.value()
+
+        self._cfg.setShowTrayAlways(self._cbShowTray.isChecked())
+        self._cfg.setUpdateInterval(interval * 60 * 1000)
+        self._cfg.sync()
+
+        self.accept()
+
+    def __initValue(self):
+        # 1 min ~ 24h
+        self._sbInterval.setRange(1, 24 * 60)
+
+        self._cbShowTray.setChecked(self._cfg.isShowTrayAlways())
+        self._sbInterval.setValue(self._cfg.updateInterval() / 1000 / 60)
+
 class Worker(QObject):
     def __init__(self, parent = None):
         super(Worker, self).__init__(parent)
@@ -35,15 +98,25 @@ class Worker(QObject):
         self._timer.timeout.connect(self._checker.check)
 
         self._tray = None
+        self._cfg = Config(self)
+        self._firstRun = True
+
+        if self._cfg.isShowTrayAlways():
+            self.__ensureTray()
+            self._tray.show()
+            self.__processEvents()
 
     def startChecker(self):
-        if self._tray:
-            self._tray.hide()
-        else:
+        if self._firstRun:
+            self._firstRun = False
             # check the first time before timeout
             self._checker.check()
-        # 2 hours for now
-        self._timer.start(2 * 60 * 60 * 1000)
+        elif self._tray:
+            if not self._cfg.isShowTrayAlways():
+                self._tray.hide()
+            self._tray.setToolTip("")
+
+        self._timer.start(self._cfg.updateInterval())
 
     def stopChecker(self):
         self._timer.stop()
@@ -55,29 +128,59 @@ class Worker(QObject):
 
         updates = self._checker.pendingUpdates()
 
-        self._tray.show()
-        # wait for a while for fixing message pos
-        time.sleep(1)
-        self._tray.setToolTip("{0} new updates available!".format(len(updates)))
-        self._tray.showMessage("Updates available", "\n".join(updates))
+        if not self._tray.isVisible():
+            self._tray.show()
+            self.__processEvents()
+
+        self._tray.setToolTip(self.tr("{0} new updates available!").format(len(updates)))
+        self._tray.showMessage(self.tr("Updates available"), "\n".join(updates))
 
     def __onTrayActivated(self, reason):
         if reason == QSystemTrayIcon.DoubleClick:
             self.startChecker()
 
+    def __onActionSettingsTriggered(self):
+        preferences = Preferences(self._cfg)
+        preferences.exec()
+        del preferences
+
     def __ensureTray(self):
         if not self._tray:
             self._tray = QSystemTrayIcon(self)
+            self._tray.setIcon(QIcon.fromTheme("system-software-update"))
             self._tray.activated.connect(self.__onTrayActivated)
-            self._tray.messageClicked.connect(self.startChecker)
+            self.__initTrayContextMenu()
 
-        self._tray.setIcon(QIcon.fromTheme("system-software-update"))
+    def __initTrayContextMenu(self):
+        acGotIt = QAction(self.tr("&Got it"), self)
+        acGotIt.triggered.connect(self.startChecker)
+
+        acSettings = QAction(self.tr("&Settings"), self)
+        acSettings.triggered.connect(self.__onActionSettingsTriggered)
+
+        acQuit = QAction(self.tr("&Quit"), self)
+        acQuit.triggered.connect(QApplication.instance().quit)
+
+        menu = QMenu()
+        menu.addAction(acGotIt)
+        menu.addSeparator()
+        menu.addAction(acSettings)
+        menu.addSeparator()
+        menu.addAction(acQuit)
+
+        self._tray.setContextMenu(menu)
+
+    def __processEvents(self):
+        loop = QEventLoop()
+        loop.processEvents(QEventLoop.AllEvents, 500)
 
 if __name__ == "__main__":
     # for CTRL + C
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    app.setWindowIcon(QIcon.fromTheme("system-software-update"))
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
         print("Warning: System tray is unavailable!")
