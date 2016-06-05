@@ -3,13 +3,15 @@
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
-import sys, signal
+import sys
+import signal
 import subprocess
-import time
+
 
 class UpdateChecker(QObject):
     updatesAvailable = pyqtSignal()
-    def __init__(self, parent = None):
+
+    def __init__(self, parent=None):
         super(UpdateChecker, self).__init__(parent)
         self._list = []
 
@@ -25,8 +27,10 @@ class UpdateChecker(QObject):
     def pendingUpdates(self):
         return self._list
 
+
 class Config(QObject):
-    def __init__(self, parent = None):
+
+    def __init__(self, parent=None):
         super(Config, self).__init__(parent)
         self._sett = QSettings(QSettings.UserScope, "cu-notify", parent=self)
 
@@ -39,7 +43,10 @@ class Config(QObject):
 
     def updateInterval(self):
         """in ms"""
-        value = self._sett.value("updateInterval", 2 * 60 * 60 * 1000, type=int)
+        value = self._sett.value(
+            "updateInterval",
+            2 * 60 * 60 * 1000,
+            type=int)
         return value
 
     def setUpdateInterval(self, v):
@@ -48,14 +55,17 @@ class Config(QObject):
     def sync(self):
         self._sett.sync()
 
+
 class Preferences(QDialog):
-    def __init__(self, config, parent = None):
+
+    def __init__(self, config, parent=None):
         super(Preferences, self).__init__(parent)
         self._cfg = config
 
         self._cbShowTray = QCheckBox(self.tr("Show tray always"), self)
         self._sbInterval = QSpinBox(self)
-        self._buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel);
+        self._buttonBox = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
         hlayout = QHBoxLayout()
         hlayout.addWidget(QLabel(self.tr("Check interval:"), self))
@@ -88,8 +98,10 @@ class Preferences(QDialog):
         self._cbShowTray.setChecked(self._cfg.isShowTrayAlways())
         self._sbInterval.setValue(self._cfg.updateInterval() / 1000 / 60)
 
+
 class Worker(QObject):
-    def __init__(self, parent = None):
+
+    def __init__(self, parent=None):
         super(Worker, self).__init__(parent)
         self._checker = UpdateChecker(self)
         self._checker.updatesAvailable.connect(self.__onUpdatesAvailable)
@@ -132,8 +144,12 @@ class Worker(QObject):
             self._tray.show()
             self.__processEvents()
 
-        self._tray.setToolTip(self.tr("{0} new updates available!").format(len(updates)))
-        self._tray.showMessage(self.tr("Updates available"), "\n".join(updates))
+        self._tray.setToolTip(
+            self.tr("{0} new updates available!").format(
+                len(updates)))
+        self._tray.showMessage(
+            self.tr("Updates available"),
+            "\n".join(updates))
 
     def __onTrayActivated(self, reason):
         if reason == QSystemTrayIcon.DoubleClick:
@@ -173,6 +189,7 @@ class Worker(QObject):
     def __processEvents(self):
         loop = QEventLoop()
         loop.processEvents(QEventLoop.AllEvents, 500)
+
 
 if __name__ == "__main__":
     # for CTRL + C
