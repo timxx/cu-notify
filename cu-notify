@@ -2,6 +2,7 @@
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
+from PyQt4.QtNetwork import QNetworkConfigurationManager
 
 import sys
 import signal
@@ -109,6 +110,8 @@ class Worker(QObject):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._checker.check)
 
+        self._network = QNetworkConfigurationManager()
+
         self._tray = None
         self._cfg = Config(self)
         self._firstRun = True
@@ -122,7 +125,12 @@ class Worker(QObject):
         if self._firstRun:
             self._firstRun = False
             # check the first time before timeout
-            self._checker.check()
+            if self._network.isOnline():
+                self._network = None
+                self._checker.check()
+            else:
+                self._network.onlineStateChanged.connect(
+                    self.__onOnlineStateChanged)
         elif self._tray:
             if not self._cfg.isShowTrayAlways():
                 self._tray.hide()
@@ -159,6 +167,11 @@ class Worker(QObject):
         preferences = Preferences(self._cfg)
         preferences.exec()
         del preferences
+
+    def __onOnlineStateChanged(self, isOnline):
+        if isOnline:
+            self._manager = None
+            self._checker.check()
 
     def __ensureTray(self):
         if not self._tray:
