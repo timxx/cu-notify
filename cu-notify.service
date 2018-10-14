@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto check updates and popup notify
+Wants=network-online.target
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c 'until ping -c1 www.archlinux.org; do sleep 1; done;'
+ExecStart=/usr/bin/cu-notify
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
